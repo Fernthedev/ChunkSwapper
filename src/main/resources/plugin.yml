@@ -1,0 +1,11 @@
+name: ChunkSwapper
+version: ${version}
+main: com.github.fernthedev.chunkswapper.spigot.SpigotChunkSwapper
+api-version: 1.15
+authors: [Fernthedev]
+description: Swaps chunks using file
+website: https://github.com/fernthedev
+commands:
+  chunkswap:
+    description: Swaps chunks
+    usage: /chunkswap
