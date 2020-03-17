@@ -91,7 +91,7 @@ public class FileCommand extends UniversalCommand {
 
                 stopwatch.stop();
                 log(sender, new TextMessage("&aFinished chunk swap. Taken " + NumberFormat.getNumberInstance().format(stopwatch.elapsed(TimeUnit.MILLISECONDS)) + "ms"));
-            });
+            }, ThreadUtils.ThreadExecutors.CACHED_THREADS.getExecutorService());
 
         });
 

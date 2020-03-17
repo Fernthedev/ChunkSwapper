@@ -5,19 +5,17 @@ import com.github.fernthedev.chunkswapper.IChunkSwapUtil;
 import com.github.fernthedev.chunkswapper.file.ChunkSwap;
 import com.github.fernthedev.chunkswapper.file.ChunkSwapFileData;
 import com.github.fernthedev.fernapi.universal.Universal;
-import com.github.fernthedev.fernutils.thread.InterfaceTaskInfo;
-import com.github.fernthedev.fernutils.thread.Task;
 import com.github.fernthedev.fernutils.thread.ThreadUtils;
-import com.github.fernthedev.fernutils.thread.multiple.TaskInfoForLoop;
 import com.github.fernthedev.fernutils.thread.multiple.TaskInfoList;
+import kotlin.Pair;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.data.BlockData;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 public class SpigotChunkSwapUtil implements IChunkSwapUtil {
@@ -27,13 +25,13 @@ public class SpigotChunkSwapUtil implements IChunkSwapUtil {
     }
 
     @Override
-    public TaskInfoForLoop<ChunkSwap> parallelChunkSwap(ChunkSwapFileData chunkSwapFileData) {
+    public TaskInfoList parallelChunkSwap(ChunkSwapFileData chunkSwapFileData) {
         World world = Bukkit.getWorld(chunkSwapFileData.getWorld());
 
         if (world == null) throw new NullPointerException("World is null somehow");
 
 
-        TaskInfoForLoop<ChunkSwap> taskInfoList = ThreadUtils.runForLoopAsync(new ArrayList<>(chunkSwapFileData.getChunkSwapMap().keySet()), (ChunkSwap chunkSwapKey) -> {
+        TaskInfoList taskInfoList = ThreadUtils.runForLoopAsync(new ArrayList<>(chunkSwapFileData.getChunkSwapMap().keySet()), (ChunkSwap chunkSwapKey) -> {
             ChunkSwap chunkSwapValue = chunkSwapFileData.getChunkSwapMap().get(chunkSwapKey);
 
             Chunk chunkKey = world.getChunkAt(chunkSwapKey.getX(), chunkSwapKey.getZ());
@@ -45,7 +43,12 @@ public class SpigotChunkSwapUtil implements IChunkSwapUtil {
             return null;
         });
 
-        taskInfoList.runThreads();
+        try {
+            taskInfoList.runThreads(ThreadUtils.ThreadExecutors.CACHED_THREADS.getExecutorService());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            e.printStackTrace();
+        }
 
         return taskInfoList;
 
@@ -105,7 +108,9 @@ public class SpigotChunkSwapUtil implements IChunkSwapUtil {
 //        final int[] blocksRequire = {16 * Constants.MAX_BUILD_LIMIT * 16}; //x*y*z
 //        final int[] blocksDone = {0};
 
-        List<Task> tasks = Collections.synchronizedList(new ArrayList<>());
+        List<Runnable> tasks = Collections.synchronizedList(new ArrayList<>());
+
+        Map<Pair<Block, BlockData>, Pair<Block, BlockData>> blockMap = new HashMap<>();
 
         /////////////////////////////// X
 //        ThreadUtils.runAsync(() -> {
@@ -119,9 +124,22 @@ public class SpigotChunkSwapUtil implements IChunkSwapUtil {
 
                 ////////////////////////////////////// Y
 
-                Task task = new Task() {
+
+                Runnable task = new Runnable() {
+                    /**
+                     * When an object implementing interface <code>Runnable</code> is used
+                     * to create a thread, starting the thread causes the object's
+                     * <code>run</code> method to be called in that separately executing
+                     * thread.
+                     * <p>
+                     * The general contract of the method <code>run</code> is that it may
+                     * take any action whatsoever.
+                     *
+                     * @see Thread#run()
+                     */
                     @Override
-                    public void run(InterfaceTaskInfo<?, Task> taskInfo) {
+                    public void run() {
+
                         // Used for optimization. This number is the
                         // highest y value with a non-air block. Once it is
                         // reached, the server skips the rest since they are air blocks
@@ -149,6 +167,12 @@ public class SpigotChunkSwapUtil implements IChunkSwapUtil {
 //                                    blocksRequire[0] -= Constants.MAX_BUILD_LIMIT - maxHeight;
                             }
 
+                            Pair<Block, BlockData> keyPair = new Pair<>(blockKey, blockDataKey);
+                            Pair<Block, BlockData> valuePair = new Pair<>(blockValue, blockDataValue);
+
+
+                            blockMap.put(keyPair, valuePair);
+
 
                             Bukkit.getServer().getScheduler().callSyncMethod(spigotChunkSwapper, new Callable<>() {
                                 /**
@@ -158,11 +182,11 @@ public class SpigotChunkSwapUtil implements IChunkSwapUtil {
                                  */
                                 @Override
                                 public Object call() {
+
                                     Universal.debug("Swapping " + toStringCoords(blockKey.getLocation()) + " " + toStringCoords(blockValue.getLocation()));
 
                                     blockKey.setBlockData(blockDataValue);
                                     blockValue.setBlockData(blockDataKey);
-
 //                                        blocksDone[0]++;
 //                                        Universal.debug("Done blocks " + blocksDone[0] + " missing to finish " + (blocksRequire[0] - blocksDone[0]));
 
@@ -172,9 +196,8 @@ public class SpigotChunkSwapUtil implements IChunkSwapUtil {
 
 
                         }
-                        Universal.debug("Finished Y on " + x + ":" + z + " and task info is " + taskInfo.getClass().getName());
-
-                        taskInfo.finish(this);
+                        Universal.debug("Finished Y on " + x + ":" + z + " and task info is " + this.getClass().getName());
+                        tasks.remove(this);
                     }
                 };
 
@@ -190,11 +213,18 @@ public class SpigotChunkSwapUtil implements IChunkSwapUtil {
 //        });
         //////////////////////////////////// X
 
-        TaskInfoList taskInfoList = new TaskInfoList(tasks);
 
-        taskInfoList.runThreads();
+        TaskInfoList taskInfoList = ThreadUtils.runAsyncList(tasks);
 
-        taskInfoList.awaitFinish(10);
+        try {
+            ExecutorService executorService = Executors.newCachedThreadPool();
+            taskInfoList.runThreads(executorService);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            e.printStackTrace();
+        }
+
+        taskInfoList.awaitFinish(1);
 
 //        synchronized (tasks) {
 //            for (Task taskInfo : tasks) {

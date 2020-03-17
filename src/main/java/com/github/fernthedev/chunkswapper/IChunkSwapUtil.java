@@ -1,13 +1,12 @@
 package com.github.fernthedev.chunkswapper;
 
-import com.github.fernthedev.chunkswapper.file.ChunkSwap;
 import com.github.fernthedev.chunkswapper.file.ChunkSwapFileData;
-import com.github.fernthedev.fernutils.thread.multiple.TaskInfoForLoop;
+import com.github.fernthedev.fernutils.thread.multiple.TaskInfoList;
 
 public interface IChunkSwapUtil {
 
     boolean checkIfWorldExists(String world);
 
-    TaskInfoForLoop<ChunkSwap> parallelChunkSwap(ChunkSwapFileData chunkSwapFileData);
+    TaskInfoList parallelChunkSwap(ChunkSwapFileData chunkSwapFileData);
 
 }
